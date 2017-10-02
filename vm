@@ -1,6 +1,6 @@
 #!/usr/bin/env ruby
 
-OVA_ROOT = '/Users/peterhickman/Desktop/OVA'.freeze
+OVA_ROOT = '/path/to/the/directory/of/OVAs'.freeze
 
 def ovas
   data = []
