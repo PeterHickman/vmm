@@ -1,0 +1,199 @@
+#!/usr/bin/env ruby
+
+OVA_ROOT = '/Users/peterhickman/Desktop/OVA'.freeze
+
+def ovas
+  data = []
+
+  Dir["#{OVA_ROOT}/*.ova"].each do |file|
+    name = File.basename(file).gsub(/\.ova$/, '')
+    data << { name: name, file: file }
+  end
+
+  ordered = {}
+  data.sort { |a, b| a[:name] <=> b[:name] }.each_with_index do |x, i|
+    ordered[i + 1] = x
+  end
+
+  ordered
+end
+
+def vms
+  data = {}
+
+  x = `VBoxManage list vms`
+
+  index = 0
+  x.split("\n").each do |line|
+    index += 1
+
+    at = line.index('"', 2)
+    name = line[1..at - 1]
+
+    at = line.index('{')
+    ref = line[at + 1..-2]
+
+    data[ref] = { index: index, name: name, running: 'down' }
+  end
+
+  x = `VBoxManage list runningvms`
+
+  x.split("\n").each do |line|
+    at = line.index('{')
+    ref = line[at + 1..-2]
+
+    data[ref][:running] = 'up'
+  end
+
+  data
+end
+
+def list_vms(data)
+  puts 'Available VMs'
+  puts
+
+  if data.empty?
+    puts 'There are no available vms'
+  else
+    puts '  # Ref                                             Name U/D'
+    puts '--- ------------------------------------ --------------- ----'
+    data.each do |ref, x|
+      puts '%3d %s %15s %s' % [x[:index], ref, x[:name], x[:running]]
+    end
+  end
+  puts
+end
+
+def list_ovas(data)
+  puts 'Available OVAs'
+  puts
+  puts '  # Name            Path'
+  puts '--- --------------- ---------------------------------------------------'
+  data.each do |index, x|
+    puts '%3d %-15s %s' % [index, x[:name], x[:file]]
+  end
+  puts
+end
+
+def start_vm(data, index)
+  vm = nil
+  data.each do |ref, x|
+    if x[:index] == index
+      vm = ref
+      break
+    end
+  end
+
+  if data[vm][:running] == 'up'
+    puts 'ERROR: This vm is already running'
+  else
+    puts "Starting vm #{index}, this will take a few moments"
+    `VBoxManage startvm --type headless #{vm}`
+    sleep 2
+  end
+end
+
+def stop_vm(data, index)
+  vm = nil
+  data.each do |ref, x|
+    if x[:index] == index
+      vm = ref
+      break
+    end
+  end
+
+  if data[vm][:running] == 'down'
+    puts 'ERROR: This vm is not running'
+  else
+    puts "Stopping vm #{index}, this will take a few moments"
+    `VBoxManage controlvm #{vm} acpipowerbutton`
+    sleep 2
+  end
+end
+
+def create_vm(data, index, name)
+  puts "Creating \"#{name}\", this will take some time ..."
+  `VBoxManage import "#{data[index][:file]}" --vsys 0 --vmname "#{name}"`
+end
+
+def delete_vm(data, index)
+  vm = nil
+  name = nil
+  data.each do |ref, x|
+    next unless x[:index] == index
+
+    vm = ref
+    name = x[:name]
+    break
+  end
+
+  puts "Deleting \"#{name}\""
+  `VBoxManage unregistervm #{vm} --delete`
+end
+
+def usage(error = '')
+  if error != ''
+    puts "ERROR: #{error}"
+    puts
+  end
+
+  puts 'usage:'
+  puts 'vm start <n> - Start vm number <n>'
+  puts 'vm stop <n> - Stop vm number <n>'
+  puts 'vm create <n> <name> - Create a vm from OVA <n> and call it <name>'
+  puts 'vm delete <n> - Delete vm number <n>'
+end
+
+existing_ova = ovas
+existing_vms = vms
+
+list_ovas(existing_ova)
+list_vms(existing_vms)
+
+command = ARGV.shift
+command = command.downcase if command
+
+case command
+when 'start'
+  index = ARGV.shift.to_i
+  if index < 1 || index > existing_vms.size
+    puts "ERROR: Invalid index [#{index}], there are only #{existing_vms.size} vms"
+    exit
+  end
+
+  start_vm(existing_vms, index)
+when 'stop'
+  index = ARGV.shift.to_i
+  if index < 1 || index > existing_vms.size
+    puts "ERROR: Invalid index [#{index}], there are only #{existing_vms.size} vms"
+    exit
+  end
+
+  stop_vm(existing_vms, index)
+when 'create'
+  index = ARGV.shift.to_i
+  if index < 1 || index > existing_ova.size
+    puts "ERROR: Invalid index [#{index}], there are only #{existing_ova.size} ovas"
+    exit
+  end
+
+  name = ARGV.shift
+  if name == ''
+    puts 'ERROR: The new vm needs a name'
+    exit
+  end
+
+  create_vm(existing_ova, index, name)
+when 'delete'
+  index = ARGV.shift.to_i
+  if index < 1 || index > existing_vms.size
+    puts "ERROR: Invalid index [#{index}], there are only #{existing_vms.size} vms"
+    exit
+  end
+
+  delete_vm(existing_vms, index)
+when nil
+  usage('')
+else
+  usage("Unknown command [#{command}]")
+end
