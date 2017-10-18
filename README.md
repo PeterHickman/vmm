@@ -14,4 +14,4 @@ And I'm good to go
 
 ## Plans ...
 
-I works well enough for me, if I need more I might as well invest the time needed to use Vagrant
+It works well enough for me, if I need more I might as well invest the time needed to use Vagrant
